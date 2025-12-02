@@ -1,0 +1,188 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Air Hockey - Full Control</title>
+<style>
+ body { background: #111; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
+ canvas { background: #1a1a1a; border: 4px solid #fff; border-radius: 10px; }
+ #scoreboard { position: absolute; top: 20px; color: white; font-size: 28px; }
+ #settingsButton, #pauseButton { position: absolute; top: 20px; width: 40px; height: 40px; background: #444; border-radius: 50%; cursor: pointer; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:18px; }
+ #settingsButton { right: 70px; }
+ #pauseButton { right: 20px; }
+ #settingsMenu { position: absolute; top: 80px; right: 20px; background: #222; padding: 10px; border-radius: 8px; color: white; display: none; }
+ #settingsMenu label { display: block; margin: 5px 0; }
+ #settingsMenu select, #settingsMenu input { margin-left: 5px; }
+ #settingsMenu button { margin-top: 10px; padding: 5px 10px; }
+ #goalText, #countdownText { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: yellow; font-size: 80px; font-weight: bold; display: none; text-shadow: 2px 2px 12px #000; }
+ #startScreen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: flex; flex-direction: column; justify-content: center; align-items: center; color: white; z-index: 1000; }
+ #startScreen h1 { font-size: 80px; margin-bottom: 20px; text-shadow: 3px 3px 10px #000; }
+ #startScreen button { padding: 15px 30px; font-size: 24px; margin: 10px; cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="startScreen">
+  <h1>Air Hockey</h1>
+  <button id="startButton">Start Game</button>
+  <button id="openSettingsStart">Settings ⚙️</button>
+</div>
+<div id="scoreboard">Player 1: 0 | Player 2: 0</div>
+<div id="settingsButton">⚙️</div>
+<div id="pauseButton">⏸️</div>
+<canvas id="game" width="1200" height="600"></canvas>
+<div id="settingsMenu">
+  <h3>Settings</h3>
+  <label>Player 1 Name: <input id="p1nameInput" type="text" value="Player 1"></label>
+  <label>Player 2 Name: <input id="p2nameInput" type="text" value="Player 2"></label>
+  <label>Mode: <select id="gameMode"><option value="ai">AI vs Player</option><option value="pvp">Player vs Player</option></select></label>
+  <label>Player 1 Control: <select id="p1control"><option value="mouse">Mouse</option><option value="keyboard">Keyboard</option></select></label>
+  <label>AI Difficulty: <select id="aiDifficulty"><option value="0.5">Very Easy</option><option value="1">Easy</option><option value="2">Normal</option><option value="3">Hard</option><option value="4.5">Very Hard</option></select></label>
+  <label>Background Music: <select id="bgMusicSelect"><option value="https://www.bensound.com/bensound-music/bensound-sci-fi.mp3">Sci-Fi Focus</option><option value="https://www.bensound.com/bensound-music/bensound-dubstep.mp3">Dubstep Energy</option><option value="https://www.bensound.com/bensound-music/bensound-epic.mp3">Epic Intense</option><option value="none">Off</option></select></label>
+  <label>Music Volume: <input type="range" id="musicVolume" min="0" max="1" step="0.01" value="0.5"></label>
+  <label>Puck Color: <select id="puckColorSelect"><option value="#f2f2f2">Normal</option><option value="#a8eaff">Light Blue</option><option value="#a8ffb0">Light Green</option><option value="#ffff66">Yellow</option></select></label>
+  <label>Max Score: <input type="number" id="maxScoreInput" value="10" min="1" max="50"></label>
+  <button id="saveSettings">Save & Start Game</button>
+</div>
+<div id="goalText">GOOOOL!</div>
+<div id="countdownText"></div>
+<audio id="bgMusic" loop></audio>
+<audio id="hitSound" src="https://freesound.org/data/previews/256/256113_3263906-lq.mp3"></audio>
+<audio id="wallSound" src="https://freesound.org/data/previews/171/171170_2437358-lq.mp3"></audio>
+<audio id="goalSound" src="https://freesound.org/data/previews/103/103048_861714-lq.mp3"></audio>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const W = canvas.width;
+const H = canvas.height;
+
+let p1 = { x: 150, y: H/2, r: 30, color: '#ff4444' };
+let p2 = { x: W-150, y: H/2, r: 30, color: '#44aaff' };
+let puck = { x: W/2, y: H/2, r: 12, vx: 5, vy: 3 };
+let puckColor = '#f2f2f2';
+
+let scoreL = 0, scoreR = 0;
+let player1Name = 'Player 1', player2Name = 'Player 2';
+let gameMode = 'ai';
+let p1control = 'mouse';
+let p2control = 'ai';
+let aiSpeed = 2;
+let gameStarted = false;
+let gamePaused = false;
+let maxScore = 10;
+
+const scoreboard = document.getElementById('scoreboard');
+const p1nameInput = document.getElementById('p1nameInput');
+const p2nameInput = document.getElementById('p2nameInput');
+const gameModeSelect = document.getElementById('gameMode');
+const p1controlSelect = document.getElementById('p1control');
+const aiDifficultySelect = document.getElementById('aiDifficulty');
+const bgMusicSelect = document.getElementById('bgMusicSelect');
+const musicVolume = document.getElementById('musicVolume');
+const puckColorSelect = document.getElementById('puckColorSelect');
+const maxScoreInput = document.getElementById('maxScoreInput');
+const saveButton = document.getElementById('saveSettings');
+const settingsButton = document.getElementById('settingsButton');
+const pauseButton = document.getElementById('pauseButton');
+const settingsMenu = document.getElementById('settingsMenu');
+const goalText = document.getElementById('goalText');
+const countdownText = document.getElementById('countdownText');
+const bgMusic = document.getElementById('bgMusic');
+const hitSound = document.getElementById('hitSound');
+const wallSound = document.getElementById('wallSound');
+const goalSound = document.getElementById('goalSound');
+const startScreen = document.getElementById('startScreen');
+const startButton = document.getElementById('startButton');
+const openSettingsStart = document.getElementById('openSettingsStart');
+
+settingsButton.onclick = () => { settingsMenu.style.display = (settingsMenu.style.display==='none')?'block':'none'; };
+openSettingsStart.onclick = () => { settingsMenu.style.display='block'; };
+pauseButton.onclick = () => { gamePaused = !gamePaused; pauseButton.textContent = gamePaused ? '▶️':'⏸️'; };
+
+startButton.onclick = () => { startScreen.style.display='none'; gameStarted=true; if(bgMusic.src) bgMusic.play(); };
+
+saveButton.onclick = () => {
+  player1Name = p1nameInput.value;
+  player2Name = p2nameInput.value;
+  gameMode = gameModeSelect.value;
+  p1control = p1controlSelect.value;
+  p2control = (gameMode==='ai') ? 'ai' : 'keyboard';
+  aiSpeed = parseFloat(aiDifficultySelect.value);
+  puckColor = puckColorSelect.value;
+  maxScore = parseInt(maxScoreInput.value) || 10;
+  bgMusic.src = bgMusicSelect.value !== 'none' ? bgMusicSelect.value : '';
+  bgMusic.volume = parseFloat(musicVolume.value);
+  if(bgMusic.src) bgMusic.play(); else bgMusic.pause();
+  gameStarted = true;
+  settingsMenu.style.display='none';
+  startScreen.style.display='none';
+  resetPositions();
+  scoreL=0; scoreR=0;
+  scoreboard.innerText = `${player1Name}: 0 | ${player2Name}: 0`;
+};
+
+let keys = {};
+document.addEventListener('keydown', e => { keys[e.key]=true; });
+document.addEventListener('keyup', e => { keys[e.key]=false; });
+canvas.addEventListener('mousemove', e => {
+  if(gameStarted && !gamePaused && p1control==='mouse'){
+    const rect = canvas.getBoundingClientRect();
+    let mx=e.clientX-rect.left; let my=e.clientY-rect.top;
+    p1.x=Math.min(mx,W/2-p1.r); p1.y=Math.max(Math.min(my,H-p1.r),p1.r);
+  }
+  if(gameStarted && !gamePaused && gameMode==='pvp' && p2control==='mouse'){
+    const rect = canvas.getBoundingClientRect();
+    let mx=e.clientX-rect.left; let my=e.clientY-rect.top;
+    if(mx>W/2){p2.x=Math.max(mx,W/2+p2.r); p2.y=Math.max(Math.min(my,H-p2.r),p2.r);}
+  }
+});
+
+function resetPositions(){ p1.x=150;p1.y=H/2; p2.x=W-150;p2.y=H/2; puck.x=W/2;puck.y=H/2; puck.vx=(Math.random()>0.5?5:-5); puck.vy=(Math.random()*4-2); }
+
+function countdown(callback){
+  let count=3; countdownText.style.display='block';
+  let interval=setInterval(()=>{
+    countdownText.innerText=count; count--;
+    if(count<0){ clearInterval(interval); countdownText.style.display='none'; callback(); }
+  },1000);
+}
+
+function showGoal(){
+  goalText.style.display='block'; goalSound.currentTime=0; goalSound.play();
+  setTimeout(()=>{ goalText.style.display='none'; countdown(resetPositions); },1000);
+}
+
+function handlePaddleCollision(pad){
+  let dx=puck.x-pad.x; let dy=puck.y-pad.y;
+  let dist=Math.hypot(dx,dy);
+  if(dist<puck.r+pad.r){
+    let nx=dx/dist; let ny=dy/dist;
+    let impact=Math.min(30,Math.max(5,dist*0.15+Math.hypot(puck.vx,puck.vy)*0.6));
+    puck.vx=nx*impact; puck.vy=ny*impact;
+    puck.x=pad.x+nx*(puck.r+pad.r); puck.y=pad.y+ny*(puck.r+pad.r);
+    hitSound.currentTime=0; hitSound.play();
+  }
+}
+
+function update(){
+  if(!gameStarted || gamePaused) return;
+  if(p1control==='keyboard'){ if(keys['ArrowUp']) p1.y-=5; if(keys['ArrowDown']) p1.y+=5; if(keys['ArrowLeft']) p1.x-=5; if(keys['ArrowRight']) p1.x+=5; }
+  if(gameMode==='pvp' && p2control==='keyboard'){ if(keys['w'])p2.y-=5;if(keys['s'])p2.y+=5;if(keys['a'])p2.x-=5;if(keys['d'])p2.x+=5;}
+  p1.x=Math.max(p1.r,Math.min(p1.x,W/2-p1.r));p2.x=Math.max(W/2+p2.r,Math.min(p2.x,W-p2.r));p1.y=Math.max(p1.r,Math.min(p1.y,H-p1.r));p2.y=Math.max(p2.r,Math.min(p2.y,H-p2.r));
+  if(p2control==='ai'){ let targetY=puck.y; let speed=aiSpeed*3; if(Math.abs(targetY-p2.y)>speed){p2.y+=(targetY>p2.y?speed:-speed);}}
+  puck.x+=puck.vx; puck.y+=puck.vy;
+  if(puck.y<puck.r||puck.y>H-puck.r){ puck.vy*=-1; puck.vx*=1.02; wallSound.currentTime=0; wallSound.play();}
+  // Goals
+  if(puck.x<puck.r){ scoreR++; showGoal(); resetPositions(); }
+  if(puck.x>W-puck.r){ scoreL++; showGoal(); resetPositions(); }
+  if(scoreL>=maxScore||scoreR>=maxScore){ gameStarted=false; alert((scoreL>=maxScore?player1Name:player2Name)+' WINS!');}
+  handlePaddleCollision(p1); handlePaddleCollision(p2);
+  scoreboard.innerText=`${player1Name}: ${scoreL} | ${player2Name}: ${scoreR}`;
+}
+
+function draw(){ ctx.fillStyle='#1a1a1a';ctx.fillRect(0,0,W,H); ctx.strokeStyle='#444';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(W/2,0);ctx.lineTo(W/2,H);ctx.stroke(); [p1,p2].forEach(p=>{ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();}); ctx.fillStyle=puckColor;ctx.beginPath();ctx.arc(puck.x,puck.y,puck.r,0,Math.PI*2);ctx.fill();}
+
+function loop(){update();draw();requestAnimationFrame(loop);}
+loop();
+</script>
+</body>
+</html>
